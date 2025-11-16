@@ -48,22 +48,7 @@ export default function PlanCanvas({ roofImage }: Props) {
 
     const scene = new Scene(engine)
 
-    const cam = new ArcRotateCamera("planCam", 0, 0, 100, Vector3.Zero(), scene)
-    cam.mode = Camera.ORTHOGRAPHIC_CAMERA
-    cam.setTarget(Vector3.Zero())
-    cam.rotation.x = Math.PI / 2
-    cam.minZ = 0.1
-    cam.attachControl()
-    cameraRef.current = cam
-
-    cam.lowerAlphaLimit = 0
-    cam.upperAlphaLimit = 0
-    cam.lowerBetaLimit = 0
-    cam.upperBetaLimit = 0
-    cam.panningSensibility = 200
-    cam._panningMouseButton = 0
-    cam.lowerRadiusLimit = 5
-    cam.upperRadiusLimit = 100
+    CreateCamera(scene)
 
     const hemiLight = new HemisphericLight("hemi", new Vector3(0, 1, 0), scene)
     hemiLight.intensity = 0.1
@@ -106,6 +91,27 @@ export default function PlanCanvas({ roofImage }: Props) {
       cameraRef.current = null
     }
   }, [roofImage])
+
+  function CreateCamera(scene: Scene) {
+    const cam = new ArcRotateCamera("planCam", 0, 0, 100, Vector3.Zero(), scene)
+    cam.mode = Camera.ORTHOGRAPHIC_CAMERA
+    cam.setTarget(Vector3.Zero())
+    cam.rotation.x = Math.PI / 2
+    cam.minZ = 0.1
+    cam.attachControl()
+    cameraRef.current = cam
+
+    cam.lowerAlphaLimit = 0
+    cam.upperAlphaLimit = 0
+    cam.lowerBetaLimit = 0
+    cam.upperBetaLimit = 0
+    cam.panningSensibility = 200
+    cam._panningMouseButton = 0
+    cam.lowerRadiusLimit = 5
+    cam.upperRadiusLimit = 100
+
+    return cam
+  }
 
   /**
    * Creates a plane mesh with the roof image as a texture and adds it to the scene.

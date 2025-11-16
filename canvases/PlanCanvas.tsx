@@ -17,7 +17,9 @@ import {
   Vector3,
 } from "@babylonjs/core"
 import { useEffect, useRef } from "react"
-import { AddRoofCommand, RoofType } from "@/types/roof"
+import { AddRoofCommand } from "@/types/roof"
+import { updateMarker } from "@/state/MarkerSync"
+import { MarkerTransform } from "@/types/marker"
 
 interface Props {
   roofImage: string
@@ -128,6 +130,12 @@ export default function PlanCanvas({ roofImage, addCommand }: Props) {
       marker.rotation.x = Math.PI / 2
       marker.position = new Vector3(hitPoint.x, 0.02, hitPoint.z)
 
+      const id = `marker-${Date.now()}-${markersRef.current.length}`
+      if (!marker.metadata) {
+        marker.metadata = {}
+      }
+      marker.metadata.id = id
+
       const mat = new StandardMaterial(
         `markerMat-${markersRef.current.length}`,
         scene
@@ -142,6 +150,25 @@ export default function PlanCanvas({ roofImage, addCommand }: Props) {
 
       markersRef.current.push(marker)
 
+      const markerData: MarkerTransform = {
+        id,
+        roofType,
+        position: {
+          x: marker.position.x,
+          y: marker.position.y,
+          z: marker.position.z,
+        },
+        rotationY: 0,
+        scaleX: 1,
+        scaleY: 1,
+        widthMeters: 1,
+        heightMeters: 1,
+        isResizing: false,
+        isSelected: false,
+      }
+
+      updateMarker(markerData)
+
       if (observer) {
         scene.onPointerObservable.remove(observer)
       }
@@ -154,6 +181,13 @@ export default function PlanCanvas({ roofImage, addCommand }: Props) {
     }
   }, [addCommand])
 
+  /**
+   * Creates an orthographic camera positioned above the scene looking down.
+   * The camera is locked to prevent rotation and configured for top-down panning.
+   *
+   * @param scene - The Babylon.js scene to add the camera to
+   * @returns The configured orthographic camera
+   */
   function CreateCamera(scene: Scene) {
     const cam = new ArcRotateCamera("planCam", 0, 0, 100, Vector3.Zero(), scene)
     cam.mode = Camera.ORTHOGRAPHIC_CAMERA
@@ -218,6 +252,14 @@ export default function PlanCanvas({ roofImage, addCommand }: Props) {
     img.src = imgUrl
   }
 
+  /**
+   * Calculates the 3D world position where the mouse pointer intersects the ground plane.
+   * Used for placing markers at the clicked location on the roof image.
+   *
+   * @param scene - The Babylon.js scene
+   * @param camera - The camera to use for ray casting
+   * @returns The intersection point on the ground plane, or null if no intersection
+   */
   function getPointerOnGround(scene: Scene, camera: Camera): Vector3 | null {
     const ray = scene.createPickingRay(
       scene.pointerX,

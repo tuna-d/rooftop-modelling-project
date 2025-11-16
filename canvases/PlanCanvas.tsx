@@ -6,23 +6,31 @@ import {
   Color3,
   Engine,
   HemisphericLight,
+  Matrix,
+  Mesh,
   MeshBuilder,
+  Plane,
+  PointerEventTypes,
   Scene,
   StandardMaterial,
   Texture,
   Vector3,
 } from "@babylonjs/core"
 import { useEffect, useRef } from "react"
+import { AddRoofCommand, RoofType } from "@/types/roof"
 
 interface Props {
   roofImage: string
+  addCommand: AddRoofCommand | null
 }
 
-export default function PlanCanvas({ roofImage }: Props) {
+export default function PlanCanvas({ roofImage, addCommand }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const engineRef = useRef<Engine | null>(null)
   const cameraRef = useRef<Camera | null>(null)
+  const sceneRef = useRef<Scene | null>(null)
   const zoomRef = useRef<number>(100)
+  const markersRef = useRef<Mesh[]>([])
 
   const updateOrtho = () => {
     const cam = cameraRef.current
@@ -47,6 +55,7 @@ export default function PlanCanvas({ roofImage }: Props) {
     engineRef.current = engine
 
     const scene = new Scene(engine)
+    sceneRef.current = scene
 
     CreateCamera(scene)
 
@@ -89,8 +98,61 @@ export default function PlanCanvas({ roofImage }: Props) {
 
       engineRef.current = null
       cameraRef.current = null
+      sceneRef.current = null
     }
   }, [roofImage])
+
+  useEffect(() => {
+    const scene = sceneRef.current
+    const camera = cameraRef.current
+    const canvas = canvasRef.current
+
+    if (!scene || !camera || !canvas || !addCommand) return
+
+    const { roofType } = addCommand
+
+    const observer = scene.onPointerObservable.add((pointerInfo) => {
+      if (pointerInfo.type !== PointerEventTypes.POINTERDOWN) return
+
+      const ev = pointerInfo.event as PointerEvent
+      if (ev.button !== 0) return // only left click
+
+      const hitPoint = getPointerOnGround(scene, camera)
+      if (!hitPoint) return
+
+      const marker = MeshBuilder.CreatePlane(
+        `marker-${markersRef.current.length}`,
+        { width: 10, height: 10 },
+        scene
+      )
+      marker.rotation.x = Math.PI / 2
+      marker.position = new Vector3(hitPoint.x, 0.02, hitPoint.z)
+
+      const mat = new StandardMaterial(
+        `markerMat-${markersRef.current.length}`,
+        scene
+      )
+      mat.emissiveColor =
+        roofType === "flat"
+          ? new Color3(0.2, 0.6, 0.9)
+          : new Color3(0.9, 0.4, 0.2)
+      mat.alpha = 0.4
+      mat.disableLighting = true
+      marker.material = mat
+
+      markersRef.current.push(marker)
+
+      if (observer) {
+        scene.onPointerObservable.remove(observer)
+      }
+    })
+
+    return () => {
+      if (scene && observer) {
+        scene.onPointerObservable.remove(observer)
+      }
+    }
+  }, [addCommand])
 
   function CreateCamera(scene: Scene) {
     const cam = new ArcRotateCamera("planCam", 0, 0, 100, Vector3.Zero(), scene)
@@ -154,6 +216,26 @@ export default function PlanCanvas({ roofImage }: Props) {
     }
 
     img.src = imgUrl
+  }
+
+  function getPointerOnGround(scene: Scene, camera: Camera): Vector3 | null {
+    const ray = scene.createPickingRay(
+      scene.pointerX,
+      scene.pointerY,
+      Matrix.Identity(),
+      camera,
+      false
+    )
+
+    const groundPlane = Plane.FromPositionAndNormal(
+      new Vector3(0, 0, 0),
+      new Vector3(0, 1, 0)
+    )
+
+    const dist = ray.intersectsPlane(groundPlane)
+    if (dist === null) return null
+
+    return ray.origin.add(ray.direction.scale(dist))
   }
 
   return <canvas ref={canvasRef} className="w-full h-full" />

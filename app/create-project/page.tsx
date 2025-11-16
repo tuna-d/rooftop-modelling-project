@@ -4,9 +4,8 @@ import ModelCanvas from "@/canvases/ModelCanvas"
 import PlanCanvas from "@/canvases/PlanCanvas"
 import { NextPage } from "next"
 import { useSearchParams, useRouter } from "next/navigation"
-import { Suspense } from "react"
-
-interface Props {}
+import { Suspense, useState } from "react"
+import { AddRoofCommand, RoofType } from "@/types/roof"
 
 function CreateProject() {
   const searchParams = useSearchParams()
@@ -14,6 +13,15 @@ function CreateProject() {
 
   const roofImageParam = searchParams.get("img") || "roof-1.png"
   const roofImage = `/images/${roofImageParam}`
+
+  const [addCommand, setAddCommand] = useState<AddRoofCommand | null>(null)
+
+  const issueAddRoof = (roofType: RoofType) => {
+    setAddCommand({
+      roofType,
+      uniqeStamp: Date.now(),
+    })
+  }
 
   return (
     <div className="flex flex-col w-screen h-screen">
@@ -29,11 +37,17 @@ function CreateProject() {
       </div>
 
       <div className="flex justify-center gap-2 my-4">
-        <button className="px-3 py-1 rounded border bg-blue-500 hover:bg-blue-600 transition-colors min-w-48">
+        <button
+          onClick={() => issueAddRoof("flat")}
+          className="px-3 py-1 rounded border bg-blue-500 hover:bg-blue-600 transition-colors min-w-48"
+        >
           Add Flat Roof
         </button>
 
-        <button className="px-3 py-1 rounded border bg-blue-500 hover:bg-blue-600 transition-colors min-w-48">
+        <button
+          onClick={() => issueAddRoof("dualPitch")}
+          className="px-3 py-1 rounded border bg-blue-500 hover:bg-blue-600 transition-colors min-w-48"
+        >
           Add Dual Pitch Roof
         </button>
       </div>
@@ -41,7 +55,7 @@ function CreateProject() {
       <div className="flex h-full">
         <div className="h-full w-2/3 border">
           <div className="w-full h-full flex items-center justify-center text-gray-500 text-sm">
-            <PlanCanvas roofImage={roofImage} />
+            <PlanCanvas roofImage={roofImage} addCommand={addCommand} />
           </div>
         </div>
 
@@ -60,7 +74,7 @@ function CreateProject() {
   )
 }
 
-const Page: NextPage<Props> = ({}) => {
+const Page: NextPage = () => {
   return (
     <Suspense
       fallback={

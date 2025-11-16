@@ -22,6 +22,22 @@ export default function PlanCanvas({ roofImage }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const engineRef = useRef<Engine | null>(null)
   const cameraRef = useRef<Camera | null>(null)
+  const zoomRef = useRef<number>(100)
+
+  const updateOrtho = () => {
+    const cam = cameraRef.current
+    const eng = engineRef.current
+    if (!cam || !eng) return
+
+    const w = eng.getRenderWidth(true)
+    const h = eng.getRenderHeight(true)
+    const z = zoomRef.current
+
+    cam.orthoLeft = -w / z
+    cam.orthoRight = w / z
+    cam.orthoTop = h / z
+    cam.orthoBottom = -h / z
+  }
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -40,18 +56,42 @@ export default function PlanCanvas({ roofImage }: Props) {
     cam.attachControl()
     cameraRef.current = cam
 
+    cam.lowerAlphaLimit = 0
+    cam.upperAlphaLimit = 0
+    cam.lowerBetaLimit = 0
+    cam.upperBetaLimit = 0
+    cam.panningSensibility = 200
+    cam._panningMouseButton = 0
+    cam.lowerRadiusLimit = 5
+    cam.upperRadiusLimit = 100
+
     const hemiLight = new HemisphericLight("hemi", new Vector3(0, 1, 0), scene)
     hemiLight.intensity = 0.1
 
     AddRoofImage(scene, roofImage)
+    updateOrtho()
 
     engine.runRenderLoop(() => scene.render())
 
-    const onResize = () => engine.resize()
+    const onResize = () => {
+      engine.resize()
+      updateOrtho()
+    }
     window.addEventListener("resize", onResize)
 
+    const onWheel = (e: WheelEvent) => {
+      const factor = e.deltaY < 0 ? 1.1 : 0.9
+      zoomRef.current = Math.max(5, Math.min(500, zoomRef.current * factor))
+      updateOrtho()
+      e.preventDefault()
+    }
+
+    canvas.addEventListener("wheel", onWheel, { passive: false })
+
     return () => {
+      canvas.removeEventListener("wheel", onWheel)
       window.removeEventListener("resize", onResize)
+
       try {
         engine.stopRenderLoop()
       } catch {}
@@ -61,6 +101,7 @@ export default function PlanCanvas({ roofImage }: Props) {
       try {
         engine.dispose()
       } catch {}
+
       engineRef.current = null
       cameraRef.current = null
     }
@@ -109,5 +150,5 @@ export default function PlanCanvas({ roofImage }: Props) {
     img.src = imgUrl
   }
 
-  return <canvas ref={canvasRef} />
+  return <canvas ref={canvasRef} className="w-full h-full" />
 }

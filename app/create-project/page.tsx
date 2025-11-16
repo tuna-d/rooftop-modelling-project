@@ -12,7 +12,7 @@ function CreateProject() {
   const searchParams = useSearchParams()
   const router = useRouter()
 
-  const roofImageParam = searchParams.get("roofImage") || "roof-1.png"
+  const roofImageParam = searchParams.get("img") || "roof-1.png"
   const roofImage = `/images/${roofImageParam}`
 
   return (

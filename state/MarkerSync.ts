@@ -37,11 +37,27 @@ export function subscribeMarkers(listener: Listener) {
  * @param marker - The marker transform to update or add
  */
 export function updateMarker(marker: MarkerTransform) {
-  const index = markers.findIndex((marker) => marker.id === marker.id)
+  const index = markers.findIndex((m) => m.id === marker.id)
   if (index !== -1) {
-    markers[index] = { ...marker, ...markers[index] }
+    markers[index] = { ...markers[index], ...marker }
   } else {
     markers.push(marker)
+  }
+  notify()
+}
+
+/**
+ * Add or update a marker by id.
+ * Replaces the entire marker transform (does not merge).
+ *
+ * @param update - The marker transform to set
+ */
+export function setMarkerTransform(update: MarkerTransform) {
+  const idx = markers.findIndex((m) => m.id === update.id)
+  if (idx >= 0) {
+    markers[idx] = update
+  } else {
+    markers.push(update)
   }
   notify()
 }

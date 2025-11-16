@@ -18,8 +18,9 @@ import {
 } from "@babylonjs/core"
 import { useEffect, useRef } from "react"
 import { AddRoofCommand } from "@/types/roof"
-import { updateMarker } from "@/state/MarkerSync"
+import { setMarkerTransform } from "@/state/MarkerSync"
 import { MarkerTransform } from "@/types/marker"
+import { MovementBehaviour } from "@/behaviours/MovementBehaviour"
 
 interface Props {
   roofImage: string
@@ -117,7 +118,7 @@ export default function PlanCanvas({ roofImage, addCommand }: Props) {
       if (pointerInfo.type !== PointerEventTypes.POINTERDOWN) return
 
       const ev = pointerInfo.event as PointerEvent
-      if (ev.button !== 0) return // only left click
+      if (ev.button !== 0) return
 
       const hitPoint = getPointerOnGround(scene, camera)
       if (!hitPoint) return
@@ -129,6 +130,7 @@ export default function PlanCanvas({ roofImage, addCommand }: Props) {
       )
       marker.rotation.x = Math.PI / 2
       marker.position = new Vector3(hitPoint.x, 0.02, hitPoint.z)
+      marker.isPickable = true
 
       const id = `marker-${Date.now()}-${markersRef.current.length}`
       if (!marker.metadata) {
@@ -148,9 +150,9 @@ export default function PlanCanvas({ roofImage, addCommand }: Props) {
       mat.disableLighting = true
       marker.material = mat
 
-      markersRef.current.push(marker)
+      markersRef.current.push(marker as Mesh)
 
-      const markerData: MarkerTransform = {
+      let markerData: MarkerTransform = {
         id,
         roofType,
         position: {
@@ -158,16 +160,34 @@ export default function PlanCanvas({ roofImage, addCommand }: Props) {
           y: marker.position.y,
           z: marker.position.z,
         },
-        rotationY: 0,
-        scaleX: 1,
-        scaleY: 1,
-        widthMeters: 1,
-        heightMeters: 1,
+        rotationY: marker.rotation.y,
+        scaleX: marker.scaling.x,
+        scaleY: marker.scaling.y,
+        widthMeters: 10,
+        heightMeters: 10,
         isResizing: false,
         isSelected: false,
       }
 
-      updateMarker(markerData)
+      setMarkerTransform(markerData)
+
+      const movement = new MovementBehaviour(marker as Mesh, 0.5)
+      movement.attach()
+
+      movement.onDragEnd(() => {
+        markerData = {
+          ...markerData,
+          position: {
+            x: marker.position.x,
+            y: marker.position.y,
+            z: marker.position.z,
+          },
+          rotationY: marker.rotation.y,
+          scaleX: marker.scaling.x,
+          scaleY: marker.scaling.y,
+        }
+        setMarkerTransform(markerData)
+      })
 
       if (observer) {
         scene.onPointerObservable.remove(observer)
@@ -202,7 +222,7 @@ export default function PlanCanvas({ roofImage, addCommand }: Props) {
     cam.lowerBetaLimit = 0
     cam.upperBetaLimit = 0
     cam.panningSensibility = 200
-    cam._panningMouseButton = 0
+    cam._panningMouseButton = 2
     cam.lowerRadiusLimit = 5
     cam.upperRadiusLimit = 100
 
@@ -229,6 +249,8 @@ export default function PlanCanvas({ roofImage, addCommand }: Props) {
         { width: img.width / scaleFactor, height: img.height / scaleFactor },
         scene
       )
+
+      plane.isPickable = false
 
       plane.rotation.x = Math.PI / 2
       plane.rotation.y = -Math.PI / 2

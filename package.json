@@ -9,6 +9,9 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@babylonjs/core": "^8.37.0",
+    "@babylonjs/loaders": "^8.37.0",
+    "@babylonjs/materials": "^8.37.0",
     "next": "16.0.3",
     "react": "19.2.0",
     "react-dom": "19.2.0"

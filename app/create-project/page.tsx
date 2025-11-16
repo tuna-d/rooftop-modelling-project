@@ -1,5 +1,7 @@
 "use client"
 
+import ModelCanvas from "@/canvases/ModelCanvas"
+import PlanCanvas from "@/canvases/PlanCanvas"
 import { NextPage } from "next"
 import { useSearchParams, useRouter } from "next/navigation"
 import { Suspense } from "react"
@@ -39,13 +41,13 @@ function CreateProject() {
       <div className="flex h-full">
         <div className="h-full w-2/3 border">
           <div className="w-full h-full flex items-center justify-center text-gray-500 text-sm">
-            Plan view (2D) goes here
+            <PlanCanvas roofImage={roofImage} />
           </div>
         </div>
 
         <div className="w-1/3 ms-2 flex flex-col">
           <div className="flex-1 border flex items-center justify-center text-gray-500 text-sm">
-            3D view goes here
+            <ModelCanvas />
           </div>
 
           <div className="mt-4 border p-3 rounded h-1/3">

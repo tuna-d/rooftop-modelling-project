@@ -11,7 +11,6 @@ export class MovementBehaviour {
   private pointerDragBehaviorXZ: PointerDragBehavior
   private mesh: Mesh
   private isDisabled: boolean = false
-  private onDragStartCallback?: () => void
   private onDragEndCallback?: () => void
   private onSelectionCallback?: () => void
   private excludedMeshes: AbstractMesh[] = []
@@ -102,12 +101,9 @@ export class MovementBehaviour {
       return true
     }
 
-    this.pointerDragBehaviorXZ.onDragStartObservable.add((evt) => {
+    this.pointerDragBehaviorXZ.onDragStartObservable.add(() => {
       if (this.initialPickedMesh === this.mesh) {
         this.isDragging = true
-      }
-      if (this.onDragStartCallback) {
-        this.onDragStartCallback()
       }
     })
 
@@ -129,11 +125,6 @@ export class MovementBehaviour {
 
   public onSelection(callback: () => void): void {
     this.onSelectionCallback = callback
-  }
-
-  public startDrag(): void {
-    this.mesh.addBehavior(this.pointerDragBehaviorXZ)
-    this.pointerDragBehaviorXZ.startDrag()
   }
 
   public attach(): void {

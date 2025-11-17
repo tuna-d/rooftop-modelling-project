@@ -56,6 +56,12 @@ export default function PlanCanvas({ roofImage, addCommand }: Props) {
     >
   >(new Map())
   const selectedMarkerIdRef = useRef<string | null>(null)
+  const previewRef = useRef<{
+    mesh: Mesh
+    roofType: RoofType
+    moveObserver: any
+    downObserver: any
+  } | null>(null)
 
   const updateOrtho = () => {
     const cam = cameraRef.current
@@ -111,6 +117,16 @@ export default function PlanCanvas({ roofImage, addCommand }: Props) {
       canvas.removeEventListener("wheel", onWheel)
       window.removeEventListener("resize", onResize)
 
+      if (previewRef.current) {
+        const { mesh, moveObserver, downObserver } = previewRef.current
+        if (scene && moveObserver)
+          scene.onPointerObservable.remove(moveObserver)
+        if (scene && downObserver)
+          scene.onPointerObservable.remove(downObserver)
+        mesh.dispose()
+        previewRef.current = null
+      }
+
       try {
         engine.stopRenderLoop()
       } catch {}
@@ -134,65 +150,12 @@ export default function PlanCanvas({ roofImage, addCommand }: Props) {
 
     if (!scene || !camera || !canvas || !addCommand) return
 
-    const { roofType } = addCommand
-
-    const observer = scene.onPointerObservable.add((pointerInfo) => {
-      if (pointerInfo.type !== PointerEventTypes.POINTERDOWN) return
-
-      const ev = pointerInfo.event as PointerEvent
-      if (ev.button !== 0) return
-
-      const pickedMesh = pointerInfo.pickInfo?.pickedMesh
-      if (pickedMesh && pickedMesh.metadata?.id) {
-        const markerId = pickedMesh.metadata.id as string
-        const isHandle = pickedMesh.name.includes("handle-")
-        if (!isHandle) {
-          selectMarker(markerId)
-          return
-        }
-        return
-      }
-
-      const hitPoint = getPointerOnGround(scene, camera)
-      if (!hitPoint) return
-
-      const id = `marker-${Date.now()}-${markersRef.current.size}`
-      const position = new Vector3(hitPoint.x, 0.02, hitPoint.z)
-
-      const markerData = CreateRoofMarker(scene, position, roofType, id)
-
-      markersRef.current.set(id, markerData)
-
-      const initialTransform: MarkerTransform = {
-        id,
-        roofType,
-        position: {
-          x: markerData.marker.position.x,
-          y: markerData.marker.position.y,
-          z: markerData.marker.position.z,
-        },
-        rotationY: markerData.marker.rotation.y,
-        scaleX: markerData.marker.scaling.x,
-        scaleY: markerData.marker.scaling.y,
-        widthMeters: 10,
-        heightMeters: 10,
-        isResizing: false,
-        isSelected: true,
-      }
-
-      setMarkerTransform(initialTransform)
-      selectMarker(id)
-
-      if (observer) {
-        scene.onPointerObservable.remove(observer)
-      }
-    })
-
-    return () => {
-      if (scene && observer) {
-        scene.onPointerObservable.remove(observer)
-      }
-    }
+    startPreviewPlacement(
+      scene,
+      camera as ArcRotateCamera,
+      canvas,
+      addCommand.roofType
+    )
   }, [addCommand])
 
   useEffect(() => {
@@ -350,6 +313,103 @@ export default function PlanCanvas({ roofImage, addCommand }: Props) {
   }
 
   /**
+   * Starts preview placement mode with a ghost mesh that follows the mouse cursor.
+   * When the user clicks, creates a real marker at that position.
+   */
+  function startPreviewPlacement(
+    scene: Scene,
+    camera: ArcRotateCamera,
+    canvas: HTMLCanvasElement,
+    roofType: RoofType
+  ) {
+    if (previewRef.current) {
+      const { mesh, moveObserver, downObserver } = previewRef.current
+      if (moveObserver) scene.onPointerObservable.remove(moveObserver)
+      if (downObserver) scene.onPointerObservable.remove(downObserver)
+      mesh.dispose()
+      previewRef.current = null
+    }
+
+    const BASE_WIDTH = 10
+    const BASE_HEIGHT = 10
+
+    const yOffset = markersRef.current.size * 0.02
+
+    const preview = MeshBuilder.CreatePlane(
+      "previewRoof",
+      { width: BASE_WIDTH, height: BASE_HEIGHT },
+      scene
+    )
+    preview.rotation.x = Math.PI / 2
+    preview.position.y = 0.01 + yOffset
+
+    const mat = new StandardMaterial("previewMat", scene)
+    mat.emissiveColor = new Color3(0.2, 1, 0.2) // green-ish
+    mat.alpha = 0.3
+    mat.disableLighting = true
+    preview.material = mat
+
+    preview.isPickable = false
+
+    const moveObserver = scene.onPointerObservable.add((pointerInfo) => {
+      if (pointerInfo.type !== PointerEventTypes.POINTERMOVE) return
+      const hitPoint = getPointerOnGround(scene, camera)
+      if (!hitPoint) return
+      preview.position.x = hitPoint.x
+      preview.position.z = hitPoint.z
+    })
+
+    const downObserver = scene.onPointerObservable.add((pointerInfo) => {
+      if (pointerInfo.type !== PointerEventTypes.POINTERDOWN) return
+
+      const ev = pointerInfo.event as PointerEvent
+      if (ev.button !== 0) return
+
+      const hitPoint = getPointerOnGround(scene, camera)
+      if (!hitPoint) return
+
+      const markerId = `marker-${Date.now()}-${markersRef.current.size}`
+      const position = new Vector3(hitPoint.x, 0.02 + yOffset, hitPoint.z)
+
+      const markerData = CreateRoofMarker(scene, position, roofType, markerId)
+
+      markersRef.current.set(markerId, markerData)
+
+      const initialTransform: MarkerTransform = {
+        id: markerId,
+        roofType,
+        position: {
+          x: markerData.marker.position.x,
+          y: markerData.marker.position.y,
+          z: markerData.marker.position.z,
+        },
+        rotationY: markerData.marker.rotation.y,
+        scaleX: markerData.marker.scaling.x,
+        scaleY: markerData.marker.scaling.y,
+        widthMeters: 10,
+        heightMeters: 10,
+        isResizing: false,
+        isSelected: true,
+      }
+
+      setMarkerTransform(initialTransform)
+      selectMarker(markerId)
+
+      if (moveObserver) scene.onPointerObservable.remove(moveObserver)
+      if (downObserver) scene.onPointerObservable.remove(downObserver)
+      preview.dispose()
+      previewRef.current = null
+    })
+
+    previewRef.current = {
+      mesh: preview,
+      roofType,
+      moveObserver,
+      downObserver,
+    }
+  }
+
+  /**
    * Calculates the 3D world position where the mouse pointer intersects the ground plane.
    * Used for placing markers at the clicked location on the roof image.
    *
@@ -499,38 +559,6 @@ export default function PlanCanvas({ roofImage, addCommand }: Props) {
     rotationBg.position = new Vector3(0, 0, -0.001)
 
     return { cornerHandles, edgeHandles, rotationHandle }
-  }
-
-  /**
-   * Keeps the rotation handle at a fixed distance from the marker center.
-   */
-  function keepRotateHandleDistanceConstant(
-    scene: Scene,
-    marker: Mesh,
-    rotationHandle: AbstractMesh,
-    distance: number
-  ): void {
-    scene.onBeforeRenderObservable.add(() => {
-      if (!marker || !rotationHandle) return
-
-      const markerWorldMatrix = marker.getWorldMatrix()
-      const markerForward = Vector3.TransformNormal(
-        new Vector3(0, 0, 1),
-        markerWorldMatrix
-      ).normalize()
-
-      const markerPosition = marker.getAbsolutePosition()
-      const targetPosition = markerPosition.add(markerForward.scale(distance))
-
-      const inverseMatrix = new Matrix()
-      marker.getWorldMatrix().invertToRef(inverseMatrix)
-      const localTarget = Vector3.TransformCoordinates(
-        targetPosition,
-        inverseMatrix
-      )
-
-      rotationHandle.position = localTarget
-    })
   }
 
   /**

@@ -28,8 +28,6 @@ export class RotationBehaviour {
 
   private initialMeshPosition: Vector3
 
-  private dragStartCallbacks: (() => void)[] = []
-
   private dragEndCallbacks: (() => void)[] = []
 
   /**
@@ -48,13 +46,6 @@ export class RotationBehaviour {
     this.initialMeshPosition = mesh.position.clone()
 
     this.handle.isPickable = true
-  }
-
-  /**
-   * Set callback for when drag starts.
-   */
-  public onDragStart(callback: () => void): void {
-    this.dragStartCallbacks.push(callback)
   }
 
   /**
@@ -96,8 +87,6 @@ export class RotationBehaviour {
             if (this.camera instanceof Camera) {
               this.camera.detachControl()
             }
-
-            this.dragStartCallbacks.forEach((cb) => cb())
           }
           break
         }

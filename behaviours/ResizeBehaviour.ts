@@ -34,7 +34,6 @@ export class ResizeBehaviour {
   private isResizing = false
   private isResizingEdge = false
 
-  private resizeStartCallbacks: (() => void)[] = []
   private resizeEndCallbacks: (() => void)[] = []
 
   /**
@@ -129,8 +128,6 @@ export class ResizeBehaviour {
             const oppositeHandle = this.cornerHandles[oppositeIdx]
             fixedCornerWorld = oppositeHandle.getAbsolutePosition().clone()
             initialMarkerCenter = this.marker.position.clone()
-
-            this.resizeStartCallbacks.forEach((cb) => cb())
 
             break
           }
@@ -231,8 +228,6 @@ export class ResizeBehaviour {
             this.isResizingEdge = true
             activeEdge = handle
             this.movementBehaviour.disable()
-
-            this.resizeStartCallbacks.forEach((cb) => cb())
 
             const axisX = this.marker.getDirection(Vector3.Right()).normalize()
             let axisZ = Vector3.Cross(Vector3.Up(), axisX)
@@ -358,13 +353,6 @@ export class ResizeBehaviour {
 
     this.isResizing = false
     this.isResizingEdge = false
-  }
-
-  /**
-   * Set callback for when resize starts.
-   */
-  public onResizeStart(callback: () => void): void {
-    this.resizeStartCallbacks.push(callback)
   }
 
   /**

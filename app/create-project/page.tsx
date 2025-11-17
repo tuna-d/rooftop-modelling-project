@@ -94,10 +94,10 @@ function CreateProject() {
             {roofList.map((r, i) => (
               <div
                 key={r.id}
-                className={`flex items-center justify-between border-b py-2 px-2 rounded transition-colors cursor-pointer ${
+                className={`mb-2 flex items-center justify-between border-b py-2 px-2 rounded transition-colors cursor-pointer ${
                   r.isSelected
-                    ? "bg-blue-50 border-2 border-blue-500 border-l-4"
-                    : "border border-transparent hover:bg-gray-100"
+                    ? "bg-blue-200 border-2 border-blue-500 border-l-4"
+                    : "border border-transparent hover:bg-gray-100 bg-slate-100"
                 }`}
                 onClick={(e) => {
                   if ((e.target as HTMLElement).tagName !== "BUTTON") {

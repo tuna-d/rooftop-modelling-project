@@ -51,6 +51,7 @@ export default function PlanCanvas({ roofImage, addCommand }: Props) {
         cornerHandles: AbstractMesh[]
         edgeHandles: AbstractMesh[]
         rotateHandle: AbstractMesh
+        ridge?: Mesh | null
       }
     >
   >(new Map())
@@ -251,6 +252,10 @@ export default function PlanCanvas({ roofImage, addCommand }: Props) {
           markerData.edgeHandles.forEach((h) => h.dispose())
           markerData.rotateHandle.dispose()
 
+          if (markerData.ridge) {
+            markerData.ridge.dispose()
+          }
+
           markersRef.current.delete(markerId)
         }
       })
@@ -450,17 +455,48 @@ export default function PlanCanvas({ roofImage, addCommand }: Props) {
     edgeHandles[1].rotation.z = Math.PI / 2
     edgeHandles[3].rotation.z = Math.PI / 2
 
+    const rotationBg = MeshBuilder.CreateDisc(
+      `${marker.name}-rot-bg`,
+      { radius: handleSize * 1.2 },
+      scene
+    )
+    rotationBg.parent = marker
+    rotationBg.position = new Vector3(0, halfH + 2, zOffset)
+    rotationBg.isPickable = false
+    rotationBg.isVisible = false
+    rotationBg.renderingGroupId = 1
+
+    const bgMat = new StandardMaterial(`rotBgMat-${marker.name}`, scene)
+    bgMat.emissiveColor = new Color3(1, 0.5, 0)
+    bgMat.alpha = 0.6
+    bgMat.disableLighting = true
+    bgMat.backFaceCulling = false
+    rotationBg.material = bgMat
+
     const rotationHandle = MeshBuilder.CreateDisc(
       `${marker.name}-rot`,
-      { radius: handleSize },
+      { radius: handleSize * 0.8 },
       scene
     )
     rotationHandle.parent = marker
-    rotationHandle.position = new Vector3(0, halfH + 2, zOffset)
-    rotationHandle.material = handleMat
+    rotationHandle.position = new Vector3(0, halfH + 2, zOffset + 0.001)
     rotationHandle.isPickable = true
     rotationHandle.isVisible = false
     rotationHandle.renderingGroupId = 1
+
+    const rotateMat = new StandardMaterial(`rotateMat-${marker.name}`, scene)
+    const rotateTex = new Texture("/textures/rotate-left.png", scene)
+
+    rotateMat.diffuseTexture = rotateTex
+    rotateMat.emissiveTexture = rotateTex
+    rotateMat.opacityTexture = rotateTex
+    rotateMat.disableLighting = true
+    rotateMat.backFaceCulling = false
+
+    rotationHandle.material = rotateMat
+
+    rotationBg.parent = rotationHandle
+    rotationBg.position = new Vector3(0, 0, -0.001)
 
     return { cornerHandles, edgeHandles, rotationHandle }
   }
@@ -504,7 +540,8 @@ export default function PlanCanvas({ roofImage, addCommand }: Props) {
     marker: Mesh,
     cornerHandles: AbstractMesh[],
     edgeHandles: AbstractMesh[],
-    rotationHandle: AbstractMesh
+    rotationHandle: AbstractMesh,
+    ridge?: Mesh | null
   ): void {
     const MIN_SCALE = 0.001
     const scaleX = Math.max(Math.abs(marker.scaling.x), MIN_SCALE)
@@ -544,6 +581,12 @@ export default function PlanCanvas({ roofImage, addCommand }: Props) {
       rotationHandle.scaling.y = invScaleY
       rotationHandle.scaling.z = invScaleZ
     }
+
+    if (ridge) {
+      ridge.scaling.x = 1
+      ridge.scaling.y = invScaleY
+      ridge.scaling.z = invScaleZ
+    }
   }
 
   /**
@@ -566,6 +609,16 @@ export default function PlanCanvas({ roofImage, addCommand }: Props) {
         if (handle) {
           handle.isVisible = isSelected
           handle.setEnabled(isSelected)
+
+          if (handle === markerData.rotateHandle) {
+            const bgChildren = handle.getChildren()
+            bgChildren.forEach((child) => {
+              if (child.name.includes("-rot-bg")) {
+                child.isVisible = isSelected
+                child.setEnabled(isSelected)
+              }
+            })
+          }
         }
       })
 
@@ -604,6 +657,7 @@ export default function PlanCanvas({ roofImage, addCommand }: Props) {
     cornerHandles: AbstractMesh[]
     edgeHandles: AbstractMesh[]
     rotateHandle: AbstractMesh
+    ridge?: Mesh | null
   } {
     const marker = MeshBuilder.CreatePlane(
       `marker-${markerId}`,
@@ -620,13 +674,36 @@ export default function PlanCanvas({ roofImage, addCommand }: Props) {
     marker.metadata.id = markerId
 
     const mat = new StandardMaterial(`markerMat-${markerId}`, scene)
-    mat.emissiveColor =
-      roofType === "flat"
-        ? new Color3(0.2, 0.6, 0.9)
-        : new Color3(0.9, 0.4, 0.2)
+    mat.emissiveColor = new Color3(0.2, 0.6, 0.9)
     mat.alpha = 0.4
     mat.disableLighting = true
     marker.material = mat
+
+    let ridge: Mesh | null = null
+    if (roofType === "dualPitch") {
+      const BASE_WIDTH = 10
+      const thickness = 0.05
+      const height = 0.2
+
+      ridge = MeshBuilder.CreateBox(
+        `${marker.name}-ridge`,
+        { width: BASE_WIDTH, height: thickness, depth: height },
+        scene
+      )
+      ridge.parent = marker
+      ridge.rotation.z = Math.PI / 2
+      ridge.position.y = 0
+      ridge.position.z = 0.05
+      ridge.position.x = 0
+
+      const ridgeMat = new StandardMaterial(`ridgeMat-${markerId}`, scene)
+      ridgeMat.emissiveColor = new Color3(1, 0.5, 0)
+      ridgeMat.disableLighting = true
+      ridgeMat.backFaceCulling = false
+      ridge.material = ridgeMat
+
+      ridge.isPickable = false
+    }
 
     const movementBehaviour = new MovementBehaviour(marker, 0.5)
     movementBehaviour.attach()
@@ -669,7 +746,13 @@ export default function PlanCanvas({ roofImage, addCommand }: Props) {
     )
     resizeBehaviour.attach()
 
-    updateHandleScaling(marker, cornerHandles, edgeHandles, rotationHandle)
+    updateHandleScaling(
+      marker,
+      cornerHandles,
+      edgeHandles,
+      rotationHandle,
+      ridge
+    )
 
     const updateMarkerState = () => {
       const markerData: MarkerTransform = {
@@ -695,7 +778,13 @@ export default function PlanCanvas({ roofImage, addCommand }: Props) {
       if (resizeBehaviour.getIsResizing()) {
         updateMarkerState()
       }
-      updateHandleScaling(marker, cornerHandles, edgeHandles, rotationHandle)
+      updateHandleScaling(
+        marker,
+        cornerHandles,
+        edgeHandles,
+        rotationHandle,
+        ridge
+      )
     })
 
     movementBehaviour.onDragEnd(updateMarkerState)
@@ -710,6 +799,7 @@ export default function PlanCanvas({ roofImage, addCommand }: Props) {
       cornerHandles,
       edgeHandles,
       rotateHandle: rotationHandle,
+      ridge,
     }
   }
 

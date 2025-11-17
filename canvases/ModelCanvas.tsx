@@ -170,10 +170,10 @@ export default function ModelCanvas() {
         roofPrism.setVerticesData("position", positions)
         roofPrism.setIndices(indices)
         roofPrism.createNormals(true)
-        roofPrism.flipFaces(true)
 
         const roofMaterial = new StandardMaterial("roofMat", scene)
         roofMaterial.backFaceCulling = false
+        roofMaterial.specularColor = new Color3(0, 0, 0)
         roofPrism.material = roofMaterial
 
         roofPrism.position.y = wallHeight

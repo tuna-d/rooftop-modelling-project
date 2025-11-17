@@ -23,6 +23,7 @@ import { setMarkerTransform } from "@/state/MarkerSync"
 import { MarkerTransform } from "@/types/marker"
 import { MovementBehaviour } from "@/behaviours/MovementBehaviour"
 import { RotationBehaviour } from "@/behaviours/RotationBehaviour"
+import { ResizeBehaviour } from "@/behaviours/ResizeBehaviour"
 
 interface Props {
   roofImage: string
@@ -42,6 +43,7 @@ export default function PlanCanvas({ roofImage, addCommand }: Props) {
         marker: Mesh
         movementBehaviour: MovementBehaviour
         rotationBehaviour: RotationBehaviour
+        resizeBehaviour: ResizeBehaviour
         cornerHandles: AbstractMesh[]
         edgeHandles: AbstractMesh[]
         rotateHandle: AbstractMesh
@@ -489,6 +491,7 @@ export default function PlanCanvas({ roofImage, addCommand }: Props) {
     marker: Mesh
     movementBehaviour: MovementBehaviour
     rotationBehaviour: RotationBehaviour
+    resizeBehaviour: ResizeBehaviour
     cornerHandles: AbstractMesh[]
     edgeHandles: AbstractMesh[]
     rotateHandle: AbstractMesh
@@ -541,6 +544,19 @@ export default function PlanCanvas({ roofImage, addCommand }: Props) {
     )
     rotationBehaviour.attach()
 
+    const resizeBehaviour = new ResizeBehaviour(
+      marker,
+      cornerHandles,
+      edgeHandles,
+      scene,
+      camera,
+      movementBehaviour,
+      markerId,
+      selectMarker,
+      () => selectedMarkerIdRef.current === markerId
+    )
+    resizeBehaviour.attach()
+
     const updateMarkerState = () => {
       const markerData: MarkerTransform = {
         id: markerId,
@@ -553,21 +569,30 @@ export default function PlanCanvas({ roofImage, addCommand }: Props) {
         rotationY: marker.rotation.y,
         scaleX: marker.scaling.x,
         scaleY: marker.scaling.y,
-        widthMeters: 10,
-        heightMeters: 10,
-        isResizing: false,
+        widthMeters: marker.scaling.x * BASE_WIDTH,
+        heightMeters: marker.scaling.y * BASE_HEIGHT,
+        isResizing: resizeBehaviour.getIsResizing(),
         isSelected: selectedMarkerIdRef.current === markerId,
       }
       setMarkerTransform(markerData)
     }
 
+    // Update marker state continuously during resize
+    const syncObserver = scene.onBeforeRenderObservable.add(() => {
+      if (resizeBehaviour.getIsResizing()) {
+        updateMarkerState()
+      }
+    })
+
     movementBehaviour.onDragEnd(updateMarkerState)
     rotationBehaviour.onDragEnd(updateMarkerState)
+    resizeBehaviour.onResizeEnd(updateMarkerState)
 
     return {
       marker,
       movementBehaviour,
       rotationBehaviour,
+      resizeBehaviour,
       cornerHandles,
       edgeHandles,
       rotateHandle: rotationHandle,

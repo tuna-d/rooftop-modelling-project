@@ -79,3 +79,23 @@ export function clearMarkers() {
   markers = []
   notify()
 }
+
+/**
+ * Alias for clearMarkers for consistency with other implementations.
+ */
+export function clearAllMarkers() {
+  clearMarkers()
+}
+
+/**
+ * Selects a marker by setting isSelected to true for the specified marker
+ * and false for all others, then notifies all listeners.
+ *
+ * @param id - The unique identifier of the marker to select, or null to deselect all
+ */
+export function selectMarker(id: string | null) {
+  markers.forEach((marker) => {
+    marker.isSelected = marker.id === id
+  })
+  notify()
+}

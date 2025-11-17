@@ -19,7 +19,11 @@ import {
 } from "@babylonjs/core"
 import { useEffect, useRef } from "react"
 import { AddRoofCommand, RoofType } from "@/types/roof"
-import { setMarkerTransform } from "@/state/MarkerSync"
+import {
+  setMarkerTransform,
+  selectMarker as selectMarkerInStore,
+  subscribeMarkers,
+} from "@/state/MarkerSync"
 import { MarkerTransform } from "@/types/marker"
 import { MovementBehaviour } from "@/behaviours/MovementBehaviour"
 import { RotationBehaviour } from "@/behaviours/RotationBehaviour"
@@ -220,6 +224,47 @@ export default function PlanCanvas({ roofImage, addCommand }: Props) {
       }
     }
   }, [addCommand])
+
+  // Sync marker removals from the store
+  useEffect(() => {
+    return subscribeMarkers((markers) => {
+      const scene = sceneRef.current
+      if (!scene) return
+
+      const markerIds = new Set(markers.map((m) => m.id))
+      const toRemove: string[] = []
+
+      markersRef.current.forEach((markerData, markerId) => {
+        if (!markerIds.has(markerId)) {
+          toRemove.push(markerId)
+        }
+      })
+
+      toRemove.forEach((markerId) => {
+        const markerData = markersRef.current.get(markerId)
+        if (markerData) {
+          markerData.movementBehaviour.detach()
+          markerData.rotationBehaviour.detach()
+          markerData.resizeBehaviour.detach()
+
+          markerData.marker.dispose()
+          markerData.cornerHandles.forEach((h) => h.dispose())
+          markerData.edgeHandles.forEach((h) => h.dispose())
+          markerData.rotateHandle.dispose()
+
+          markersRef.current.delete(markerId)
+        }
+      })
+
+      if (
+        selectedMarkerIdRef.current &&
+        !markerIds.has(selectedMarkerIdRef.current)
+      ) {
+        selectedMarkerIdRef.current = null
+        updateSelectionVisuals()
+      }
+    })
+  }, [])
 
   /**
    * Creates an orthographic camera positioned above the scene looking down.
@@ -518,6 +563,7 @@ export default function PlanCanvas({ roofImage, addCommand }: Props) {
   function selectMarker(markerId: string | null): void {
     selectedMarkerIdRef.current = markerId
     updateSelectionVisuals()
+    selectMarkerInStore(markerId)
   }
 
   /**

@@ -4,8 +4,15 @@ import ModelCanvas from "@/canvases/ModelCanvas"
 import PlanCanvas from "@/canvases/PlanCanvas"
 import { NextPage } from "next"
 import { useSearchParams, useRouter } from "next/navigation"
-import { Suspense, useState } from "react"
+import { Suspense, useState, useEffect } from "react"
 import { AddRoofCommand, RoofType } from "@/types/roof"
+import { MarkerTransform } from "@/types/marker"
+import {
+  subscribeMarkers,
+  removeMarker,
+  selectMarker,
+  clearAllMarkers,
+} from "@/state/MarkerSync"
 
 function CreateProject() {
   const searchParams = useSearchParams()
@@ -15,6 +22,7 @@ function CreateProject() {
   const roofImage = `/images/${roofImageParam}`
 
   const [addCommand, setAddCommand] = useState<AddRoofCommand | null>(null)
+  const [roofList, setRoofList] = useState<MarkerTransform[]>([])
 
   const issueAddRoof = (roofType: RoofType) => {
     setAddCommand({
@@ -22,6 +30,18 @@ function CreateProject() {
       uniqeStamp: Date.now(),
     })
   }
+
+  useEffect(() => {
+    return subscribeMarkers((markers) => {
+      setRoofList(markers)
+    })
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      clearAllMarkers()
+    }
+  }, [])
 
   return (
     <div className="flex flex-col w-screen h-screen">
@@ -39,20 +59,20 @@ function CreateProject() {
       <div className="flex justify-center gap-2 my-4">
         <button
           onClick={() => issueAddRoof("flat")}
-          className="px-3 py-1 rounded border bg-blue-500 hover:bg-blue-600 transition-colors min-w-48"
+          className="px-3 py-1 rounded border bg-blue-500 hover:bg-blue-600 transition-colors min-w-48 user-select-none"
         >
           Add Flat Roof
         </button>
 
         <button
           onClick={() => issueAddRoof("dualPitch")}
-          className="px-3 py-1 rounded border bg-blue-500 hover:bg-blue-600 transition-colors min-w-48"
+          className="px-3 py-1 rounded border bg-blue-500 hover:bg-blue-600 transition-colors min-w-48 user-select-none"
         >
           Add Dual Pitch Roof
         </button>
       </div>
 
-      <div className="flex h-full">
+      <div className="flex h-full mx-2">
         <div className="h-full w-2/3 border">
           <div className="w-full h-full flex items-center justify-center text-gray-500 text-sm">
             <PlanCanvas roofImage={roofImage} addCommand={addCommand} />
@@ -64,9 +84,50 @@ function CreateProject() {
             <ModelCanvas />
           </div>
 
-          <div className="mt-4 border p-3 rounded h-1/3">
+          <div className="mt-4 border p-3 rounded h-64 overflow-y-auto">
             <h2 className="font-bold mb-2">Roofs</h2>
-            <div className="text-gray-500 text-sm">No roofs yet</div>
+
+            {roofList.length === 0 && (
+              <div className="text-gray-500 text-sm">No roofs yet</div>
+            )}
+
+            {roofList.map((r, i) => (
+              <div
+                key={r.id}
+                className={`flex items-center justify-between border-b py-2 px-2 rounded transition-colors cursor-pointer ${
+                  r.isSelected
+                    ? "bg-blue-50 border-2 border-blue-500 border-l-4"
+                    : "border border-transparent hover:bg-gray-100"
+                }`}
+                onClick={(e) => {
+                  if ((e.target as HTMLElement).tagName !== "BUTTON") {
+                    selectMarker(r.id)
+                  }
+                }}
+              >
+                <div className="flex-1">
+                  <div className="font-semibold text-black">Roof-{i + 1}</div>
+                  <div className="text-sm text-gray-600">
+                    Type: {r.roofType === "flat" ? "Flat Roof" : "Dual Pitch"}
+                  </div>
+                  <div className="text-sm text-gray-600">
+                    Size: {(r.widthMeters * 5).toFixed(2)}m ×{" "}
+                    {(r.heightMeters * 5).toFixed(2)}m
+                  </div>
+                </div>
+
+                <button
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    removeMarker(r.id)
+                  }}
+                  className="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600"
+                >
+                  Delete
+                </button>
+              </div>
+            ))}
           </div>
         </div>
       </div>

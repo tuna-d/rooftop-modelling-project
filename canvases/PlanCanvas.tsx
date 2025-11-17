@@ -162,9 +162,6 @@ export default function PlanCanvas({ roofImage, addCommand }: Props) {
 
       markersRef.current.set(id, markerData)
 
-      selectedMarkerIdRef.current = id
-      updateSelectionVisuals()
-
       const initialTransform: MarkerTransform = {
         id,
         roofType,
@@ -183,6 +180,7 @@ export default function PlanCanvas({ roofImage, addCommand }: Props) {
       }
 
       setMarkerTransform(initialTransform)
+      selectMarker(id)
 
       if (observer) {
         scene.onPointerObservable.remove(observer)
@@ -206,7 +204,9 @@ export default function PlanCanvas({ roofImage, addCommand }: Props) {
       const ev = pointerInfo.event as PointerEvent
       if (ev.button !== 0) return
 
-      const pickedMesh = pointerInfo.pickInfo?.pickedMesh
+      const freshPick = scene.pick(scene.pointerX, scene.pointerY)
+      const pickedMesh = freshPick?.pickedMesh
+
       if (pickedMesh && pickedMesh.metadata?.id) {
         const markerId = pickedMesh.metadata.id as string
         const isHandle = pickedMesh.name.includes("handle-")
@@ -225,7 +225,6 @@ export default function PlanCanvas({ roofImage, addCommand }: Props) {
     }
   }, [addCommand])
 
-  // Sync marker removals from the store
   useEffect(() => {
     return subscribeMarkers((markers) => {
       const scene = sceneRef.current
@@ -261,8 +260,14 @@ export default function PlanCanvas({ roofImage, addCommand }: Props) {
         !markerIds.has(selectedMarkerIdRef.current)
       ) {
         selectedMarkerIdRef.current = null
-        updateSelectionVisuals()
       }
+
+      const selectedFromStore = markers.find((m) => m.isSelected)?.id ?? null
+      if (selectedFromStore !== selectedMarkerIdRef.current) {
+        selectedMarkerIdRef.current = selectedFromStore
+      }
+
+      updateSelectionVisuals()
     })
   }, [])
 
@@ -518,10 +523,18 @@ export default function PlanCanvas({ roofImage, addCommand }: Props) {
       }
     })
 
-    edgeHandles.forEach((handle) => {
+    edgeHandles.forEach((handle, index) => {
       if (handle) {
-        handle.scaling.x = invScaleX
-        handle.scaling.y = invScaleY
+        const isRotated =
+          Math.abs(handle.rotation.z - Math.PI / 2) < 0.01 ||
+          Math.abs(handle.rotation.z + Math.PI / 2) < 0.01
+        if (isRotated) {
+          handle.scaling.x = invScaleY
+          handle.scaling.y = invScaleX
+        } else {
+          handle.scaling.x = invScaleX
+          handle.scaling.y = invScaleY
+        }
         handle.scaling.z = invScaleZ
       }
     })
@@ -542,6 +555,7 @@ export default function PlanCanvas({ roofImage, addCommand }: Props) {
 
     markersRef.current.forEach((markerData, markerId) => {
       const isSelected = markerId === selectedMarkerIdRef.current
+
       const allHandles = [
         ...markerData.cornerHandles,
         ...markerData.edgeHandles,
@@ -554,6 +568,14 @@ export default function PlanCanvas({ roofImage, addCommand }: Props) {
           handle.setEnabled(isSelected)
         }
       })
+
+      if (isSelected) {
+        markerData.movementBehaviour.attach()
+        markerData.movementBehaviour.enable()
+      } else {
+        markerData.movementBehaviour.detachDrag()
+        markerData.movementBehaviour.disable()
+      }
     })
   }
 
@@ -608,6 +630,9 @@ export default function PlanCanvas({ roofImage, addCommand }: Props) {
 
     const movementBehaviour = new MovementBehaviour(marker, 0.5)
     movementBehaviour.attach()
+    movementBehaviour.onSelection(() => {
+      selectMarker(markerId)
+    })
 
     const BASE_WIDTH = 10
     const BASE_HEIGHT = 10

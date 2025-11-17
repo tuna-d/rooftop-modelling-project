@@ -13,6 +13,7 @@ export class MovementBehaviour {
   private isDisabled: boolean = false
   private onDragStartCallback?: () => void
   private onDragEndCallback?: () => void
+  private onSelectionCallback?: () => void
   private excludedMeshes: AbstractMesh[] = []
   private initialPickedMesh: AbstractMesh | null = null
   private isDragging: boolean = false
@@ -42,6 +43,22 @@ export class MovementBehaviour {
         if (pointerInfo.type === PointerEventTypes.POINTERDOWN) {
           const pickedMesh = pointerInfo.pickInfo?.pickedMesh ?? null
           this.initialPickedMesh = pickedMesh
+          
+          // If behavior is disabled and mesh is clicked, trigger selection callback
+          // CRITICAL: Always do a fresh pick to get the absolute topmost mesh
+          // This prevents selecting markers that are underneath other markers
+          if (this.isDisabled && this.onSelectionCallback) {
+            const freshPick = scene.pick(scene.pointerX, scene.pointerY)
+            const topmostMesh = freshPick?.pickedMesh
+            
+            // Only select if this mesh is the topmost mesh (not a handle)
+            if (topmostMesh === this.mesh) {
+              const isHandle = topmostMesh.name.includes("handle-")
+              if (!isHandle) {
+                this.onSelectionCallback()
+              }
+            }
+          }
         } else if (
           pointerInfo.type === PointerEventTypes.POINTERUP ||
           pointerInfo.type === PointerEventTypes.POINTERDOUBLETAP
@@ -110,6 +127,10 @@ export class MovementBehaviour {
     this.onDragEndCallback = callback
   }
 
+  public onSelection(callback: () => void): void {
+    this.onSelectionCallback = callback
+  }
+
   public startDrag(): void {
     this.mesh.addBehavior(this.pointerDragBehaviorXZ)
     this.pointerDragBehaviorXZ.startDrag()
@@ -130,6 +151,20 @@ export class MovementBehaviour {
         this.pointerObserver = undefined
       }
     }
+  }
+
+  /**
+   * Detaches only the drag behavior but keeps the pointer observer active.
+   * This allows the mesh to remain pickable for selection while preventing dragging.
+   */
+  public detachDrag(): void {
+    // Remove the behavior from the mesh if it's attached
+    this.pointerDragBehaviorXZ.detach()
+    // Also remove it from behaviors array to ensure it's fully detached
+    if (this.mesh.behaviors.includes(this.pointerDragBehaviorXZ)) {
+      this.mesh.removeBehavior(this.pointerDragBehaviorXZ)
+    }
+    // Keep pointerObserver active so mesh remains pickable
   }
 
   public disable(): void {

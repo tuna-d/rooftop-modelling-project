@@ -448,6 +448,47 @@ export default function PlanCanvas({ roofImage, addCommand }: Props) {
   }
 
   /**
+   * Updates the scaling of handles to maintain constant size regardless of marker scaling.
+   */
+  function updateHandleScaling(
+    marker: Mesh,
+    cornerHandles: AbstractMesh[],
+    edgeHandles: AbstractMesh[],
+    rotationHandle: AbstractMesh
+  ): void {
+    const MIN_SCALE = 0.001
+    const scaleX = Math.max(Math.abs(marker.scaling.x), MIN_SCALE)
+    const scaleY = Math.max(Math.abs(marker.scaling.y), MIN_SCALE)
+    const scaleZ = Math.max(Math.abs(marker.scaling.z), MIN_SCALE)
+
+    const invScaleX = 1 / scaleX
+    const invScaleY = 1 / scaleY
+    const invScaleZ = 1 / scaleZ
+
+    cornerHandles.forEach((handle) => {
+      if (handle) {
+        handle.scaling.x = invScaleX
+        handle.scaling.y = invScaleY
+        handle.scaling.z = invScaleZ
+      }
+    })
+
+    edgeHandles.forEach((handle) => {
+      if (handle) {
+        handle.scaling.x = invScaleX
+        handle.scaling.y = invScaleY
+        handle.scaling.z = invScaleZ
+      }
+    })
+
+    if (rotationHandle) {
+      rotationHandle.scaling.x = invScaleX
+      rotationHandle.scaling.y = invScaleY
+      rotationHandle.scaling.z = invScaleZ
+    }
+  }
+
+  /**
    * Updates the visibility of handles based on the selected marker.
    */
   function updateSelectionVisuals(): void {
@@ -557,6 +598,8 @@ export default function PlanCanvas({ roofImage, addCommand }: Props) {
     )
     resizeBehaviour.attach()
 
+    updateHandleScaling(marker, cornerHandles, edgeHandles, rotationHandle)
+
     const updateMarkerState = () => {
       const markerData: MarkerTransform = {
         id: markerId,
@@ -577,11 +620,11 @@ export default function PlanCanvas({ roofImage, addCommand }: Props) {
       setMarkerTransform(markerData)
     }
 
-    // Update marker state continuously during resize
     const syncObserver = scene.onBeforeRenderObservable.add(() => {
       if (resizeBehaviour.getIsResizing()) {
         updateMarkerState()
       }
+      updateHandleScaling(marker, cornerHandles, edgeHandles, rotationHandle)
     })
 
     movementBehaviour.onDragEnd(updateMarkerState)

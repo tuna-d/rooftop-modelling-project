@@ -1,6 +1,7 @@
 "use client"
 
 import {
+  AbstractMesh,
   ArcRotateCamera,
   Camera,
   Color3,
@@ -17,7 +18,7 @@ import {
   Vector3,
 } from "@babylonjs/core"
 import { useEffect, useRef } from "react"
-import { AddRoofCommand } from "@/types/roof"
+import { AddRoofCommand, RoofType } from "@/types/roof"
 import { setMarkerTransform } from "@/state/MarkerSync"
 import { MarkerTransform } from "@/types/marker"
 import { MovementBehaviour } from "@/behaviours/MovementBehaviour"
@@ -33,7 +34,19 @@ export default function PlanCanvas({ roofImage, addCommand }: Props) {
   const cameraRef = useRef<Camera | null>(null)
   const sceneRef = useRef<Scene | null>(null)
   const zoomRef = useRef<number>(100)
-  const markersRef = useRef<Mesh[]>([])
+  const markersRef = useRef<
+    Map<
+      string,
+      {
+        marker: Mesh
+        movementBehaviour: MovementBehaviour
+        cornerHandles: AbstractMesh[]
+        edgeHandles: AbstractMesh[]
+        rotateHandle: AbstractMesh
+      }
+    >
+  >(new Map())
+  const selectedMarkerIdRef = useRef<string | null>(null)
 
   const updateOrtho = () => {
     const cam = cameraRef.current
@@ -120,74 +133,48 @@ export default function PlanCanvas({ roofImage, addCommand }: Props) {
       const ev = pointerInfo.event as PointerEvent
       if (ev.button !== 0) return
 
+      const pickedMesh = pointerInfo.pickInfo?.pickedMesh
+      if (pickedMesh && pickedMesh.metadata?.id) {
+        const markerId = pickedMesh.metadata.id as string
+        const isHandle = pickedMesh.name.includes("handle-")
+        if (!isHandle) {
+          selectMarker(markerId)
+          return
+        }
+        return
+      }
+
       const hitPoint = getPointerOnGround(scene, camera)
       if (!hitPoint) return
 
-      const marker = MeshBuilder.CreatePlane(
-        `marker-${markersRef.current.length}`,
-        { width: 10, height: 10 },
-        scene
-      )
-      marker.rotation.x = Math.PI / 2
-      marker.position = new Vector3(hitPoint.x, 0.02, hitPoint.z)
-      marker.isPickable = true
+      const id = `marker-${Date.now()}-${markersRef.current.size}`
+      const position = new Vector3(hitPoint.x, 0.02, hitPoint.z)
 
-      const id = `marker-${Date.now()}-${markersRef.current.length}`
-      if (!marker.metadata) {
-        marker.metadata = {}
-      }
-      marker.metadata.id = id
+      const markerData = CreateRoofMarker(scene, position, roofType, id)
 
-      const mat = new StandardMaterial(
-        `markerMat-${markersRef.current.length}`,
-        scene
-      )
-      mat.emissiveColor =
-        roofType === "flat"
-          ? new Color3(0.2, 0.6, 0.9)
-          : new Color3(0.9, 0.4, 0.2)
-      mat.alpha = 0.4
-      mat.disableLighting = true
-      marker.material = mat
+      markersRef.current.set(id, markerData)
 
-      markersRef.current.push(marker as Mesh)
+      selectedMarkerIdRef.current = id
+      updateSelectionVisuals()
 
-      let markerData: MarkerTransform = {
+      const initialTransform: MarkerTransform = {
         id,
         roofType,
         position: {
-          x: marker.position.x,
-          y: marker.position.y,
-          z: marker.position.z,
+          x: markerData.marker.position.x,
+          y: markerData.marker.position.y,
+          z: markerData.marker.position.z,
         },
-        rotationY: marker.rotation.y,
-        scaleX: marker.scaling.x,
-        scaleY: marker.scaling.y,
+        rotationY: markerData.marker.rotation.y,
+        scaleX: markerData.marker.scaling.x,
+        scaleY: markerData.marker.scaling.y,
         widthMeters: 10,
         heightMeters: 10,
         isResizing: false,
-        isSelected: false,
+        isSelected: true,
       }
 
-      setMarkerTransform(markerData)
-
-      const movement = new MovementBehaviour(marker as Mesh, 0.5)
-      movement.attach()
-
-      movement.onDragEnd(() => {
-        markerData = {
-          ...markerData,
-          position: {
-            x: marker.position.x,
-            y: marker.position.y,
-            z: marker.position.z,
-          },
-          rotationY: marker.rotation.y,
-          scaleX: marker.scaling.x,
-          scaleY: marker.scaling.y,
-        }
-        setMarkerTransform(markerData)
-      })
+      setMarkerTransform(initialTransform)
 
       if (observer) {
         scene.onPointerObservable.remove(observer)
@@ -197,6 +184,35 @@ export default function PlanCanvas({ roofImage, addCommand }: Props) {
     return () => {
       if (scene && observer) {
         scene.onPointerObservable.remove(observer)
+      }
+    }
+  }, [addCommand])
+
+  useEffect(() => {
+    const scene = sceneRef.current
+    if (!scene || addCommand) return
+
+    const selectionObserver = scene.onPointerObservable.add((pointerInfo) => {
+      if (pointerInfo.type !== PointerEventTypes.POINTERDOWN) return
+
+      const ev = pointerInfo.event as PointerEvent
+      if (ev.button !== 0) return
+
+      const pickedMesh = pointerInfo.pickInfo?.pickedMesh
+      if (pickedMesh && pickedMesh.metadata?.id) {
+        const markerId = pickedMesh.metadata.id as string
+        const isHandle = pickedMesh.name.includes("handle-")
+        if (!isHandle) {
+          selectMarker(markerId)
+        }
+      } else {
+        selectMarker(null)
+      }
+    })
+
+    return () => {
+      if (scene && selectionObserver) {
+        scene.onPointerObservable.remove(selectionObserver)
       }
     }
   }, [addCommand])
@@ -300,6 +316,242 @@ export default function PlanCanvas({ roofImage, addCommand }: Props) {
     if (dist === null) return null
 
     return ray.origin.add(ray.direction.scale(dist))
+  }
+
+  /**
+   * Creates handles for a marker that's lying flat (rotation.x = PI/2).
+   * Returns corner handles, edge handles, and a rotation handle.
+   */
+  function createHandlesForMarker(
+    marker: Mesh,
+    scene: Scene,
+    baseWidth: number,
+    baseHeight: number
+  ): {
+    cornerHandles: AbstractMesh[]
+    edgeHandles: AbstractMesh[]
+    rotationHandle: AbstractMesh
+  } {
+    const handleSize = 0.3
+    const zOffset = 0.2
+
+    const bbox = marker.getBoundingInfo().boundingBox.extendSize
+    const halfW = bbox.x
+    const halfH = bbox.y
+
+    const handleMat = new StandardMaterial(`handleMat-${marker.name}`, scene)
+    handleMat.emissiveColor = new Color3(1, 0.5, 0)
+    handleMat.disableLighting = true
+    handleMat.backFaceCulling = false
+
+    const cornerHandles: AbstractMesh[] = []
+    const cornerPositions = [
+      new Vector3(-halfW, halfH, zOffset), // top-left
+      new Vector3(halfW, halfH, zOffset), // top-right
+      new Vector3(-halfW, -halfH, zOffset), // bottom-left
+      new Vector3(halfW, -halfH, zOffset), // bottom-right
+    ]
+
+    cornerPositions.forEach((pos, index) => {
+      const h = MeshBuilder.CreatePlane(
+        `${marker.name}-corner-${index}`,
+        { width: handleSize, height: handleSize },
+        scene
+      )
+      h.parent = marker
+      h.position = pos
+      h.material = handleMat
+      h.isPickable = true
+      h.isVisible = false
+      h.renderingGroupId = 1
+      cornerHandles.push(h)
+    })
+
+    const edgeHandles: AbstractMesh[] = []
+    const edgePositions = [
+      new Vector3(0, halfH, zOffset), // top
+      new Vector3(halfW, 0, zOffset), // right
+      new Vector3(0, -halfH, zOffset), // bottom
+      new Vector3(-halfW, 0, zOffset), // left
+    ]
+
+    const edgeNames = ["top", "right", "bottom", "left"] as const
+
+    edgePositions.forEach((pos, index) => {
+      const h = MeshBuilder.CreatePlane(
+        `${marker.name}-edge-${edgeNames[index]}`,
+        { width: handleSize * 1.2, height: handleSize * 0.7 },
+        scene
+      )
+      h.parent = marker
+      h.position = pos
+      h.material = handleMat
+      h.isPickable = true
+      h.isVisible = false
+      h.metadata = { edgeSide: edgeNames[index] }
+      h.renderingGroupId = 1
+      edgeHandles.push(h)
+    })
+
+    edgeHandles[1].rotation.z = Math.PI / 2
+    edgeHandles[3].rotation.z = Math.PI / 2
+
+    const rotationHandle = MeshBuilder.CreateDisc(
+      `${marker.name}-rot`,
+      { radius: handleSize },
+      scene
+    )
+    rotationHandle.parent = marker
+    rotationHandle.position = new Vector3(0, halfH + 2, zOffset)
+    rotationHandle.material = handleMat
+    rotationHandle.isPickable = true
+    rotationHandle.isVisible = false
+    rotationHandle.renderingGroupId = 1
+
+    return { cornerHandles, edgeHandles, rotationHandle }
+  }
+
+  /**
+   * Keeps the rotation handle at a fixed distance from the marker center.
+   */
+  function keepRotateHandleDistanceConstant(
+    scene: Scene,
+    marker: Mesh,
+    rotationHandle: AbstractMesh,
+    distance: number
+  ): void {
+    scene.onBeforeRenderObservable.add(() => {
+      if (!marker || !rotationHandle) return
+
+      const markerWorldMatrix = marker.getWorldMatrix()
+      const markerForward = Vector3.TransformNormal(
+        new Vector3(0, 0, 1),
+        markerWorldMatrix
+      ).normalize()
+
+      const markerPosition = marker.getAbsolutePosition()
+      const targetPosition = markerPosition.add(markerForward.scale(distance))
+
+      const inverseMatrix = new Matrix()
+      marker.getWorldMatrix().invertToRef(inverseMatrix)
+      const localTarget = Vector3.TransformCoordinates(
+        targetPosition,
+        inverseMatrix
+      )
+
+      rotationHandle.position = localTarget
+    })
+  }
+
+  /**
+   * Updates the visibility of handles based on the selected marker.
+   */
+  function updateSelectionVisuals(): void {
+    const scene = sceneRef.current
+    if (!scene) return
+
+    markersRef.current.forEach((markerData, markerId) => {
+      const isSelected = markerId === selectedMarkerIdRef.current
+      const allHandles = [
+        ...markerData.cornerHandles,
+        ...markerData.edgeHandles,
+        markerData.rotateHandle,
+      ]
+
+      allHandles.forEach((handle) => {
+        if (handle) {
+          handle.isVisible = isSelected
+          handle.setEnabled(isSelected)
+        }
+      })
+    })
+  }
+
+  /**
+   * Selects a marker by ID and updates visuals.
+   */
+  function selectMarker(markerId: string | null): void {
+    selectedMarkerIdRef.current = markerId
+    updateSelectionVisuals()
+  }
+
+  /**
+   * Creates a roof marker with handles and movement behavior.
+   */
+  function CreateRoofMarker(
+    scene: Scene,
+    position: Vector3,
+    roofType: RoofType,
+    markerId: string
+  ): {
+    marker: Mesh
+    movementBehaviour: MovementBehaviour
+    cornerHandles: AbstractMesh[]
+    edgeHandles: AbstractMesh[]
+    rotateHandle: AbstractMesh
+  } {
+    const marker = MeshBuilder.CreatePlane(
+      `marker-${markerId}`,
+      { width: 10, height: 10 },
+      scene
+    )
+    marker.rotation.x = Math.PI / 2
+    marker.position = position
+    marker.isPickable = true
+
+    if (!marker.metadata) {
+      marker.metadata = {}
+    }
+    marker.metadata.id = markerId
+
+    const mat = new StandardMaterial(`markerMat-${markerId}`, scene)
+    mat.emissiveColor =
+      roofType === "flat"
+        ? new Color3(0.2, 0.6, 0.9)
+        : new Color3(0.9, 0.4, 0.2)
+    mat.alpha = 0.4
+    mat.disableLighting = true
+    marker.material = mat
+
+    const movementBehaviour = new MovementBehaviour(marker, 0.5)
+    movementBehaviour.attach()
+
+    const BASE_WIDTH = 10
+    const BASE_HEIGHT = 10
+    const { cornerHandles, edgeHandles, rotationHandle } =
+      createHandlesForMarker(marker, scene, BASE_WIDTH, BASE_HEIGHT)
+
+    const allResizeHandles = [...cornerHandles, ...edgeHandles]
+
+    movementBehaviour.addExcludedMeshes([...allResizeHandles, rotationHandle])
+
+    movementBehaviour.onDragEnd(() => {
+      const markerData: MarkerTransform = {
+        id: markerId,
+        roofType,
+        position: {
+          x: marker.position.x,
+          y: marker.position.y,
+          z: marker.position.z,
+        },
+        rotationY: marker.rotation.y,
+        scaleX: marker.scaling.x,
+        scaleY: marker.scaling.y,
+        widthMeters: 10,
+        heightMeters: 10,
+        isResizing: false,
+        isSelected: selectedMarkerIdRef.current === markerId,
+      }
+      setMarkerTransform(markerData)
+    })
+
+    return {
+      marker,
+      movementBehaviour,
+      cornerHandles,
+      edgeHandles,
+      rotateHandle: rotationHandle,
+    }
   }
 
   return <canvas ref={canvasRef} className="w-full h-full" />

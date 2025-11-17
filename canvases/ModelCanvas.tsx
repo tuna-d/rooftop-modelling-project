@@ -54,6 +54,7 @@ export default function ModelCanvas() {
         mesh.position.x = marker.position.x
         mesh.position.z = marker.position.z
         mesh.position.y = 1
+        mesh.rotation.y = marker.rotationY
       })
 
       for (const [id, mesh] of houses) {

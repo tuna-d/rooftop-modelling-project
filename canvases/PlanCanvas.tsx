@@ -22,6 +22,7 @@ import { AddRoofCommand, RoofType } from "@/types/roof"
 import { setMarkerTransform } from "@/state/MarkerSync"
 import { MarkerTransform } from "@/types/marker"
 import { MovementBehaviour } from "@/behaviours/MovementBehaviour"
+import { RotationBehaviour } from "@/behaviours/RotationBehaviour"
 
 interface Props {
   roofImage: string
@@ -40,6 +41,7 @@ export default function PlanCanvas({ roofImage, addCommand }: Props) {
       {
         marker: Mesh
         movementBehaviour: MovementBehaviour
+        rotationBehaviour: RotationBehaviour
         cornerHandles: AbstractMesh[]
         edgeHandles: AbstractMesh[]
         rotateHandle: AbstractMesh
@@ -486,6 +488,7 @@ export default function PlanCanvas({ roofImage, addCommand }: Props) {
   ): {
     marker: Mesh
     movementBehaviour: MovementBehaviour
+    rotationBehaviour: RotationBehaviour
     cornerHandles: AbstractMesh[]
     edgeHandles: AbstractMesh[]
     rotateHandle: AbstractMesh
@@ -525,7 +528,20 @@ export default function PlanCanvas({ roofImage, addCommand }: Props) {
 
     movementBehaviour.addExcludedMeshes([...allResizeHandles, rotationHandle])
 
-    movementBehaviour.onDragEnd(() => {
+    const camera = cameraRef.current
+    if (!camera) {
+      throw new Error("Camera not initialized")
+    }
+
+    const rotationBehaviour = new RotationBehaviour(
+      marker,
+      rotationHandle,
+      scene,
+      camera
+    )
+    rotationBehaviour.attach()
+
+    const updateMarkerState = () => {
       const markerData: MarkerTransform = {
         id: markerId,
         roofType,
@@ -543,11 +559,15 @@ export default function PlanCanvas({ roofImage, addCommand }: Props) {
         isSelected: selectedMarkerIdRef.current === markerId,
       }
       setMarkerTransform(markerData)
-    })
+    }
+
+    movementBehaviour.onDragEnd(updateMarkerState)
+    rotationBehaviour.onDragEnd(updateMarkerState)
 
     return {
       marker,
       movementBehaviour,
+      rotationBehaviour,
       cornerHandles,
       edgeHandles,
       rotateHandle: rotationHandle,

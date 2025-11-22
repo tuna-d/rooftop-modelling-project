@@ -46,8 +46,8 @@ export default function ModelCanvas() {
     light.intensity = 0.9
 
     function createHouseRoot(scene: Scene, roofType: RoofType): TransformNode {
-      const width = 5
-      const depth = 5
+      const width = 10
+      const depth = 10
       const wallHeight = 1.5
       const roofHeight = 1.5
 
@@ -242,6 +242,9 @@ export default function ModelCanvas() {
         model.scaling.x = t.scaleX
         model.scaling.z = t.scaleY
         model.scaling.y = 1
+        model.position.x = t.position.x
+        model.position.z = t.position.z
+        model.position.y = 0
       } else {
         model.scaling.x = t.scaleX
         model.scaling.z = t.scaleY
